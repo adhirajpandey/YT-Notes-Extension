@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Bookmark</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div id="video-title" class="centered">Loading video title...</div>
+        <div id="message-area" class="centered" style="color: rgb(0, 154, 5);"></div>
+        <div id="general-notes" class="centered">
+            <textarea id="general-notes-textarea" placeholder="Add general notes here..."></textarea>
+        </div>
+        <div id="timestamp-notes" class="centered">
+            <span id="current-timestamp">00:00</span>
+            <textarea id="timestamp-notes-textarea" placeholder="Add notes for this timestamp..."></textarea>
+        </div>
+        <div class="container">
+            <button id="saveNotesBtn">Save Notes</button>
+            <button id="viewData">View Stored Data</button>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
