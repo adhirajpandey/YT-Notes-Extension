@@ -119,3 +119,10 @@ document.getElementById('saveNotesBtn').addEventListener('click', function() {
     });
 });
 
+document.getElementById('viewData').addEventListener('click', function() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        const tabURL = tabs[0].url;
+        const viewNotesURL = `http://127.0.0.1:5000/viewNotes?video_url=${tabURL}`;
+        chrome.tabs.create({ url: viewNotesURL });
+    });
+});
