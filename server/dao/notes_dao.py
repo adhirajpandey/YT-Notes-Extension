@@ -25,6 +25,7 @@ def check_video_exists(url):
     conn.close()
     return len(data) > 0
 
+
 def get_video_title_and_url(video_id):
     conn = create_connection(DATABASE)
     cursor = conn.cursor()
@@ -40,7 +41,6 @@ def get_video_title_and_url(video_id):
     conn.close()
     return video_title, video_url
 
-print(get_video_title_and_url(5))
 
 def insert_video(url, title):
     conn = create_connection(DATABASE)
@@ -125,4 +125,3 @@ def get_notes(video_id):
 # insert_timestamp_note('test', 'test', 3)
 # insert_general_note('test', 3)
 # print(insert_video('test', 'test'))
-
