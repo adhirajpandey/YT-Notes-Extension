@@ -1,4 +1,4 @@
-const backendEndpoint = "http://192.168.29.181:5010/"
+const backendEndpoint = "http://127.0.0.1:5000/"
 
 function fetchVideoTitle() {
     if (window.location.hostname === 'www.youtube.com' && window.location.pathname === '/watch') {
@@ -127,5 +127,12 @@ document.getElementById('viewData').addEventListener('click', function() {
         const viewNotesURL = backendEndpoint + "viewNotes?video_url=" + tabURL;
         chrome.tabs.create({ url: viewNotesURL });
     });
+});
 
+document.getElementById('downloadMD').addEventListener('click', function() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        const tabURL = tabs[0].url;
+        const viewNotesURL = backendEndpoint + "getMD?video_url=" + tabURL;
+        chrome.tabs.create({ url: viewNotesURL });
+    });
 });

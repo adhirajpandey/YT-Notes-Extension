@@ -27,7 +27,7 @@ def timestamp_in_seconds(timestamp):
         return -1
 
 
-def create_markdown(video_id, notes):
+def create_markdown_string(video_id, notes):
     general_notes = notes['general_notes']
     timestamp_notes = notes['timestamp_notes']
 
@@ -48,11 +48,14 @@ def create_markdown(video_id, notes):
         markdown_string += f'### [{ts_note[1]}]({video_url + "&t=" + str(timestamp_in_seconds(ts_note[1])) + "s"})\n'
         markdown_string += f'{ts_note[2]}\n\n'
 
-    with open(f'{video_id}.md', 'w') as f:
-        f.write(markdown_string)
-
     return markdown_string
 
+
+def create_markdown_file(markdown_string, video_id):
+    with open(f'mdfiles/{video_id}.md', 'w', encoding='utf8') as f:
+        f.write(markdown_string)
+
+    return (f'mdfiles/{video_id}.md')
 
 def markdown_to_html(markdown_string):
     html = markdown.markdown(markdown_string)
