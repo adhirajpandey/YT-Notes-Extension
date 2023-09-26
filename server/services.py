@@ -3,6 +3,14 @@ import markdown
 import dao.notes_dao as notes_dao
 
 
+def clean_yt_url(url):
+    if "&" in url:
+        baseurl = url.split("&")[0]
+    else:
+        baseurl = url
+    return baseurl
+
+
 def epoch_to_datetime(epoch):
     return datetime.datetime.fromtimestamp(epoch).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -40,10 +48,12 @@ def create_markdown(video_id, notes):
         markdown_string += f'### [{ts_note[1]}]({video_url + "&t=" + str(timestamp_in_seconds(ts_note[1])) + "s"})\n'
         markdown_string += f'{ts_note[2]}\n\n'
 
+    with open(f'{video_id}.md', 'w') as f:
+        f.write(markdown_string)
+
     return markdown_string
 
 
 def markdown_to_html(markdown_string):
     html = markdown.markdown(markdown_string)
     return html
-

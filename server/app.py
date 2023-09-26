@@ -23,6 +23,8 @@ def save_notes():
     general_notes = data.get('generalNotes')
     timestamp_notes = data.get('timestampNotes')
 
+    url = services.clean_yt_url(url)
+
     # check if the video exists in the database
     if not notes_dao.check_video_exists(url):
         video_id = notes_dao.insert_video(url, title)
