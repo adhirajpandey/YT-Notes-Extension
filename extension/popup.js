@@ -1,3 +1,5 @@
+const backendEndpoint = "http://192.168.29.181:5010/"
+
 function fetchVideoTitle() {
     if (window.location.hostname === 'www.youtube.com' && window.location.pathname === '/watch') {
         const titleElement = document.querySelector('.title.style-scope.ytd-video-primary-info-renderer');
@@ -33,7 +35,7 @@ function saveNotesToBackend(url, generalNotes, timestampNotes, videoTitle, video
     }
 
     // Define the API endpoint (replace with your actual endpoint)
-    const apiEndpoint = "http://127.0.0.1:5000/saveNotes";
+    const apiEndpoint = backendEndpoint + "saveNotes";
 
     // Prepare the data to be sent
     const data = {
@@ -122,7 +124,8 @@ document.getElementById('saveNotesBtn').addEventListener('click', function() {
 document.getElementById('viewData').addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         const tabURL = tabs[0].url;
-        const viewNotesURL = `http://127.0.0.1:5000/viewNotes?video_url=${tabURL}`;
+        const viewNotesURL = backendEndpoint + "viewNotes?video_url=" + tabURL;
         chrome.tabs.create({ url: viewNotesURL });
     });
+
 });
