@@ -122,6 +122,3 @@ def get_notes(video_id):
     conn.close()
     return {'general_notes': general_notes, 'timestamp_notes': timestamp_notes}
 
-# insert_timestamp_note('test', 'test', 3)
-# insert_general_note('test', 3)
-# print(insert_video('test', 'test'))

@@ -39,10 +39,10 @@ def save_notes():
         else:
             notes_dao.insert_general_note(video_id, general_notes)
 
-        return jsonify({'success': True})
+        return jsonify({'task': 'save_notes', 'status': 'success'})
     except Exception as e:
         print(e)
-        return jsonify({'success': False})
+        return jsonify({'task': 'save_notes', 'status': 'failure'})
 
 
 @app.route('/viewNotes', methods=['GET'])
@@ -59,7 +59,8 @@ def get_notes():
         return render_template('notes.html', content=html_content)
     except Exception as e:
         print(e)
-        return jsonify({'success': False})
+        return jsonify({'task': 'view_notes', 'status': 'failure'})
+
 
 @app.route('/getMD', methods=['GET'])
 def get_md():
@@ -69,6 +70,10 @@ def get_md():
         video_id = notes_dao.get_video_id(url)
         notes = notes_dao.get_notes(video_id)
 
+        # check if notes exist
+        if len(notes['general_notes']) == 0 and len(notes['timestamp_notes']) == 0:
+            return jsonify({'task': 'get_MD', 'status': 'failure'})
+
         md_string = services.create_markdown_string(video_id, notes)
         filepath = services.create_markdown_file(md_string, video_id)
 
@@ -76,7 +81,27 @@ def get_md():
 
     except Exception as e:
         print(e)
-        return jsonify({'success': False})
+        return jsonify({'task': 'get_MD', 'status': 'failure'})
+
+
+@app.route('/checkNotesExist', methods=['POST'])
+def check_notes_exist():
+    try:
+        data = request.get_json()
+        url = data.get('url')
+
+        video_id = notes_dao.get_video_id(url)
+        notes = notes_dao.get_notes(video_id)
+
+        # check if notes exist
+        if len(notes['general_notes']) == 0 and len(notes['timestamp_notes']) == 0:
+            return jsonify({'task': 'get_MD', 'status': 'success', 'exists': False})
+        else:
+            return jsonify({'task': 'get_MD', 'status': 'success', 'exists': True})
+
+    except Exception as e:
+        print(e)
+        return jsonify({'task': 'check_notes_exist', 'status': 'failure'})
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-const backendEndpoint = "http://127.0.0.1:5000/"
+const backendEndpoint = "http://127.0.0.1:5000/"  //http://192.168.29.181:5010/
 
 function fetchVideoTitle() {
     if (window.location.hostname === 'www.youtube.com' && window.location.pathname === '/watch') {
@@ -28,17 +28,14 @@ function fetchVideoTimestamp() {
 
 
 function saveNotesToBackend(url, generalNotes, timestampNotes, videoTitle, videoTimestamp) {
-    // Check if a YouTube video is found
     if (videoTitle === 'No YouTube video found.') {
         setMessage('No YouTube video found on this page. Notes not saved.');
-        return; // Exit the function early
+        return;
     }
 
-    // Define the API endpoint (replace with your actual endpoint)
     const apiEndpoint = backendEndpoint + "saveNotes";
 
-    // Prepare the data to be sent
-    const data = {
+    const notesData = {
         url: url,
         videoTitle: videoTitle,
         videoTimestamp: videoTimestamp,
@@ -46,19 +43,16 @@ function saveNotesToBackend(url, generalNotes, timestampNotes, videoTitle, video
         timestampNotes: timestampNotes
     };
 
-    console.log("Sending data:", data);
-
-    // Make the API call
     fetch(apiEndpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(notesData)
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
+        if (data.status === 'success') {
             setMessage('Notes saved successfully!');
         } else {
             setMessage('Failed to save notes.');
@@ -66,7 +60,35 @@ function saveNotesToBackend(url, generalNotes, timestampNotes, videoTitle, video
     })
     .catch(error => {
         console.error('Error saving notes:', error);
-        setMessage('Error saving notes. Please try again.');
+        setMessage('Error saving notes. Unable to communicate with server.');
+    });
+}
+
+function checkNotesExistence(url) {
+    const apiEndpoint = backendEndpoint + "checkNotesExist";
+
+    const videoData = {
+        url: url,
+    };
+
+    return fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(videoData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data['exists'] === true) {
+            return 1
+        } else {
+            return 0
+        }
+    })
+    .catch(error => {
+        console.error('Error checking notes:', error);
+        setMessage('Error checking notes. Unable to communicate with server.');
     });
 }
 
@@ -124,15 +146,38 @@ document.getElementById('saveNotesBtn').addEventListener('click', function() {
 document.getElementById('viewData').addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         const tabURL = tabs[0].url;
-        const viewNotesURL = backendEndpoint + "viewNotes?video_url=" + tabURL;
-        chrome.tabs.create({ url: viewNotesURL });
+        checkNotesExistence(tabURL).then(notesExist => {
+            if (notesExist) {
+                const viewNotesURL = backendEndpoint + "viewNotes?video_url=" + tabURL;
+                chrome.tabs.create({ url: viewNotesURL });
+            }
+            else {
+                setMessage('No notes found for this video.');
+            }
+        }).catch(error => {
+            console.error('Error:', error);
+            setMessage('Error occurred while checking for notes.');
+        });
     });
 });
 
 document.getElementById('downloadMD').addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         const tabURL = tabs[0].url;
-        const viewNotesURL = backendEndpoint + "getMD?video_url=" + tabURL;
-        chrome.tabs.create({ url: viewNotesURL });
+        checkNotesExistence(tabURL).then(notesExist => {
+            if (notesExist) {
+                const MDFileUrl = backendEndpoint + "getMD?video_url=" + tabURL;
+                chrome.tabs.create({ url: MDFileUrl });
+            }
+            else {
+                setMessage('No notes found for this video.');
+            }
+        }).catch(error => {
+            console.error('Error:', error);
+            setMessage('Error occurred while checking for notes.');
+        });
+
+
+
     });
 });
