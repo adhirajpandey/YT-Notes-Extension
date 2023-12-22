@@ -1,8 +1,7 @@
 import sqlite3
 import datetime
 
-# DATABASE = "server/database/notes.db"
-DATABASE = r"C:\Users\Adhiraj\PycharmProjects\YT-Marker\server\database\notes.db"
+DATABASE = "database/notes.db"
 
 
 def get_current_timestamp():
