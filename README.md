@@ -1,4 +1,4 @@
-# Toppr-Extractor
+# YT-Notes-Extension
 
 ## Description
 Chrome Extension that simplifies note-taking for both general purposes and specific timestamps in YouTube videos. Unlike other note-taking tools, this extension prioritizes your privacy by being self-hosted.
