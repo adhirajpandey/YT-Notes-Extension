@@ -3,14 +3,18 @@
 ## Description
 Chrome Extension that simplifies note-taking for both general purposes and specific timestamps in YouTube videos. Unlike other note-taking tools, this extension prioritizes your privacy by being self-hosted.
 
+The extension's frontend is constructed with HTML, CSS, and JS, while its backend server utilizes Flask and SQLite for the database.
+
 ## Features
 1. General Notes: Easily jot down your thoughts, ideas, or any information with the general notes feature. Keep your thoughts organized and accessible whenever you need them.
 
 2. Timestamped Notes: Enhance your video-watching experience by adding timestamped notes for specific moments in YouTube videos. Never lose track of valuable information again.
 
-3. Self-Hosted: This extension operates on a self-hosted model, ensuring that your notes stay confidential and are not stored on external servers.
+3. MD File Download: Effortlessly download Markdown (MD) files for individual videos, encompassing both General and Timestamped Notes
 
-4. MD File Download: Effortlessly download Markdown (MD) files for individual videos, encompassing both General and Timestamped Notes
+4. Self-Hosted: This extension operates on a self-hosted model, ensuring that your notes stay confidential and are not stored on external servers.
+
+
 
 ## Installation
 
