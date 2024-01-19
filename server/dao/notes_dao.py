@@ -2,6 +2,8 @@ import sqlite3
 import datetime
 
 DATABASE = "database/notes.db"
+DATABASE = r'D:\\Projects\\Ongoing\\YT-Notes-Extension\\server\\database\\notes.db'
+
 
 
 def get_current_timestamp():

@@ -53,14 +53,14 @@ function saveNotesToBackend(url, generalNotes, timestampNotes, videoTitle, video
     .then(response => response.json())
     .then(data => {
         if (data.status === 'success') {
-            setMessage('Notes saved successfully!');
+            setMessage('Notes saved successfully!', 'green');
         } else {
-            setMessage('Failed to save notes.');
+            setMessage('Failed to save notes.', 'red');
         }
     })
     .catch(error => {
         console.error('Error saving notes:', error);
-        setMessage('Error saving notes. Unable to communicate with server.');
+        setMessage('Error saving notes. Unable to communicate with server.', 'red');
     });
 }
 
@@ -88,12 +88,13 @@ function checkNotesExistence(url) {
     })
     .catch(error => {
         console.error('Error checking notes:', error);
-        setMessage('Error checking notes. Unable to communicate with server.');
+        setMessage('Error checking notes. Unable to communicate with server.', 'red');
     });
 }
 
-function setMessage(message) {
+function setMessage(message, color) {
     document.getElementById('message-area').textContent = message;
+    document.getElementById('message-area').style.color = color || 'black';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -118,6 +119,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('current-timestamp').textContent = results[0].result;
             }
         });
+    
+    var generalNotes = getGeneralNotes(tabURL);
+    generalNotes.then(function(result) {
+        if (result !== -1) {
+            document.getElementById('general-notes-textarea').placeholder = result;
+        }
+    });
+
+    
     });
 });
 
@@ -152,11 +162,11 @@ document.getElementById('viewData').addEventListener('click', function() {
                 chrome.tabs.create({ url: viewNotesURL });
             }
             else {
-                setMessage('No notes found for this video.');
+                setMessage('No notes found for this video.', 'red');
             }
         }).catch(error => {
             console.error('Error:', error);
-            setMessage('Error occurred while checking for notes.');
+            setMessage('Error occurred while checking for notes.', 'red');
         });
     });
 });
@@ -170,14 +180,42 @@ document.getElementById('downloadMD').addEventListener('click', function() {
                 chrome.tabs.create({ url: MDFileUrl });
             }
             else {
-                setMessage('No notes found for this video.');
+                setMessage('No notes found for this video.', 'red');
             }
         }).catch(error => {
             console.error('Error:', error);
-            setMessage('Error occurred while checking for notes.');
+            setMessage('Error occurred while checking for notes.', 'red');
         });
 
 
 
     });
 });
+
+function getGeneralNotes(url) {
+    const apiEndpoint = backendEndpoint + "getGeneralNotes";
+
+    const videoData = {
+        url: url,
+    };
+
+    return fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(videoData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data['exists'] === true) {
+            return data['notes']
+        } else {
+            return -1
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching general notes:', error);
+        setMessage('Error checking notes. Unable to communicate with server.', 'red');
+    });
+}

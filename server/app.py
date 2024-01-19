@@ -102,6 +102,24 @@ def check_notes_exist():
     except Exception as e:
         print(e)
         return jsonify({'task': 'check_notes_exist', 'status': 'failure'})
+    
+    
+@app.route('/getGeneralNotes', methods=['POST'])
+def fetch_general_notes():
+    try:
+        data = request.get_json()
+        url = data.get('url')
+
+        video_id = notes_dao.get_video_id(url)
+        notes = notes_dao.get_notes(video_id)
+
+        general_notes = notes['general_notes']
+        general_notes_strings = [x[1] for x in general_notes]
+
+        return jsonify({'task': 'get_general_notes', 'status': 'success', 'exists': True, 'notes': general_notes_strings})
+    except Exception as e:
+        print(e)
+        return jsonify({'task': 'check_notes_exist', 'status': 'failure', 'exists': False})
 
 
 if __name__ == "__main__":
