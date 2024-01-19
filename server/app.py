@@ -115,8 +115,10 @@ def fetch_general_notes():
 
         general_notes = notes['general_notes']
         general_notes_strings = [x[1] for x in general_notes]
-
-        return jsonify({'task': 'get_general_notes', 'status': 'success', 'exists': True, 'notes': general_notes_strings})
+        if len(general_notes_strings) == 0:
+            return jsonify({'task': 'get_general_notes', 'status': 'success', 'exists': False})
+        else:
+            return jsonify({'task': 'get_general_notes', 'status': 'success', 'exists': True, 'notes': general_notes_strings})
     except Exception as e:
         print(e)
         return jsonify({'task': 'check_notes_exist', 'status': 'failure', 'exists': False})
