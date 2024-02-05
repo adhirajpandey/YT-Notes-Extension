@@ -123,7 +123,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var generalNotes = getGeneralNotes(tabURL);
     generalNotes.then(function(result) {
         if (result !== -1) {
-            document.getElementById('general-notes-textarea').placeholder = result;
+            console.log(result)
+            document.getElementById('general-notes-textarea').placeholder = result.join('\n');
         }
     });
 

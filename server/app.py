@@ -108,7 +108,7 @@ def check_notes_exist():
 def fetch_general_notes():
     try:
         data = request.get_json()
-        url = data.get('url')
+        url = services.clean_yt_url(data.get('url'))
 
         video_id = notes_dao.get_video_id(url)
         notes = notes_dao.get_notes(video_id)

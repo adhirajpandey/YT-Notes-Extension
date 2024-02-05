@@ -1,13 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Video Bookmark Extension",
+  "name": "YT Notes Extension",
   "version": "1.0",
-  "description": "Bookmark video timestamps and add notes.",
+  "description": "Save your YT Videos Notes",
   "action": {
     "default_popup": "popup.html"
-  },
-  "background": {
-    "service_worker": "background.js"
   },
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": ["<all_urls>"]
