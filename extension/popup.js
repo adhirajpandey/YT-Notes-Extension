@@ -216,8 +216,6 @@ function getGeneralNotes(url) {
         }
     })
     .catch(error => {
-        console.error('Error fetching general notes:', error);
-        setMessage('Error checking notes. Unable to communicate with server.', 'red');
         return -1
     });
 }
