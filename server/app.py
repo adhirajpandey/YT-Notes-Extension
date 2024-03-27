@@ -2,6 +2,10 @@ from flask import Flask, jsonify, request, render_template, send_file
 from flask_cors import CORS
 import dao.notes_dao as notes_dao
 import services as services
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -48,6 +52,11 @@ def save_notes():
 def get_notes():
     try:
         url = request.args.get('video_url')
+        password = request.args.get('password')
+
+        if password != os.getenv('PASSWORD'):
+            return jsonify({'task': 'save_notes', 'status': 'failure'})
+
         url = services.clean_yt_url(url)
 
         video_id = notes_dao.get_video_id(url)
@@ -66,6 +75,11 @@ def get_notes():
 def get_md():
     try:
         url = request.args.get('video_url')
+        password = request.args.get('password')
+
+        if password != os.getenv('PASSWORD'):
+            return jsonify({'task': 'save_notes', 'status': 'failure'})
+        
         url = services.clean_yt_url(url)
 
         video_id = notes_dao.get_video_id(url)
@@ -89,6 +103,7 @@ def get_md():
 def check_notes_exist():
     try:
         data = request.get_json()
+
         url = services.clean_yt_url(data.get('url'))
 
         video_id = notes_dao.get_video_id(url)
@@ -109,6 +124,7 @@ def check_notes_exist():
 def fetch_general_notes():
     try:
         data = request.get_json()
+        
         url = services.clean_yt_url(data.get('url'))
 
         video_id = notes_dao.get_video_id(url)
@@ -126,18 +142,37 @@ def fetch_general_notes():
     
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
-    if request.method == 'GET':
-        return render_template('dashboard.html')
-    else:
-        videos = notes_dao.get_all_videos()
-        return jsonify({'videos': videos})
+    try:
+        if request.method == 'GET':
+            return render_template('dashboard.html')
+        else:
+            data = request.get_json()
+            password = data.get('password')
+            if password == os.getenv('PASSWORD'):
+                videos = notes_dao.get_all_videos()
+                return jsonify({'videos': videos})
+            else:
+                return jsonify({'message': 'Invalid password!'})
+    except Exception as e:
+        print(e)
+        return jsonify({'message': 'Error in dashboard'})
     
 @app.route('/search', methods=['POST'])
 def search():
-    data = request.get_json()
-    search_query = data.get('query')
-    videos = notes_dao.search_videos(search_query)
-    return jsonify({'videos': videos})
+    try:
+        data = request.get_json()
+        password = data.get('password')
+
+        if password != os.getenv('PASSWORD'):
+            return jsonify({'task': 'save_notes', 'status': 'failure'})
+
+        search_query = data.get('query')
+        videos = notes_dao.search_videos(search_query)
+        
+        return jsonify({'videos': videos})
+    except Exception as e:
+        print(e)
+        return jsonify({'task': 'search', 'status': 'failure'})
 
 
 if __name__ == "__main__":

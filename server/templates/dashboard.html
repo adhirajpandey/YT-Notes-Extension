@@ -67,6 +67,8 @@
 		<div class="mx-auto max-w-7xl" id="video-list"></div>
 	</body>
 	<script>
+		const PASSWORD = "a"
+
 		async function populateDashboard(videos) {
 			const videoList = document.getElementById("video-list")
 			videoList.innerHTML = ""
@@ -120,6 +122,9 @@
 				headers: {
 					"Content-Type": "application/json",
 				},
+				body: JSON.stringify({
+					password: PASSWORD,
+				}),
 			})
 
 			const data = await response.json()
@@ -134,7 +139,10 @@
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ query: searchQuery }),
+				body: JSON.stringify({
+					query: searchQuery,
+					password: PASSWORD,
+				}),
 			})
 			const data = await response.json()
 			populateDashboard(data.videos)
