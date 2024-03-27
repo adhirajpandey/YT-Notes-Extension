@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<script src="https://cdn.tailwindcss.com"></script>
+		<title>Dashboard</title>
+	</head>
+	<body>
+		<div class="fixed top-0 left-0 w-full z-50 bg-red-600">
+			<div class="mx-auto max-w md:max-w-7xl px-2 md:px-6">
+				<div class="relative flex h-16 justify-between items-center">
+					<div class="flex flex-1 items-stretch justify-start">
+						<a href="/dashboard">
+							<div
+								class="text-3xl m-2 font-extrabold text-center text-white"
+							>
+								YT Notes Dashboard
+							</div>
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+		<form class="max-w-md mx-auto mt-20 max-w-7xl m-2">
+			<label
+				for="default-search"
+				class="mb-2 text-sm font-medium text-white sr-only"
+				>Search</label
+			>
+			<div class="relative m-2">
+				<div
+					class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none"
+				>
+					<svg
+						class="w-4 h-4 text-gray-500 dark:text-gray-400"
+						aria-hidden="true"
+						xmlns="http://www.w3.org/2000/svg"
+						fill="none"
+						viewBox="0 0 20 20"
+					>
+						<path
+							stroke="currentColor"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"
+						/>
+					</svg>
+				</div>
+				<input
+					type="search"
+					id="default-search"
+					class="block w-full p-4 ps-10 text-sm text-gray-900 border border-gray-300 rounded-lg bg-gray-50 bg-gray-200"
+					placeholder="Search Videos..."
+					required
+				/>
+				<button
+					id="search-btn"
+					type="submit"
+					class="text-white absolute end-2.5 bottom-2.5 bg-red-700 hover:bg-red-600 font-medium rounded-lg text-sm px-4 py-2"
+				>
+					Search
+				</button>
+			</div>
+		</form>
+		<div class="mx-auto max-w-7xl" id="video-list"></div>
+	</body>
+	<script>
+		async function populateDashboard(videos) {
+			const videoList = document.getElementById("video-list")
+			videoList.innerHTML = ""
+
+			videos.forEach((video) => {
+				const videoElem = document.createElement("div")
+				videoElem.classList.add(
+					"max-w",
+					"p-4",
+					"my-2",
+					"border-b",
+					"border-gray-200"
+				)
+
+				const videoAndBtnContainer = document.createElement("div")
+				videoAndBtnContainer.classList.add("flex", "justify-between")
+
+				const clipIdElem = document.createElement("a")
+				clipIdElem.classList.add("text-lg", "font-bold")
+				clipIdElem.href = video[1]
+				clipIdElem.innerHTML = video[2]
+
+				const viewNotesBtn = document.createElement("a")
+				viewNotesBtn.classList.add(
+					"text-white",
+					"text-sm",
+					"hover:bg-red-600",
+					"inline-flex",
+					"items-center",
+					"justify-center",
+					"rounded-md",
+					"px-3",
+					"py-2",
+					"bg-red-700"
+				)
+
+				viewNotesBtn.href = `/viewNotes?video_url=${video[1]}`
+				viewNotesBtn.innerHTML = "Notes"
+
+				videoAndBtnContainer.appendChild(clipIdElem)
+				videoAndBtnContainer.appendChild(viewNotesBtn)
+
+				videoElem.appendChild(videoAndBtnContainer)
+				videoList.appendChild(videoElem)
+			})
+		}
+
+		async function getVideosData() {
+			const response = await fetch("/dashboard", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+			})
+
+			const data = await response.json()
+			populateDashboard(data.videos)
+		}
+
+		async function search() {
+			event.preventDefault()
+			const searchQuery = document.getElementById("default-search").value
+			const response = await fetch("/search", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ query: searchQuery }),
+			})
+			const data = await response.json()
+			populateDashboard(data.videos)
+		}
+
+		document.addEventListener("DOMContentLoaded", getVideosData())
+		document.getElementById("search-btn").addEventListener("click", search)
+	</script>
+</html>

@@ -11,7 +11,6 @@ CORS(app)
 def hello_world():
     return jsonify({'message': 'Hello, World!, YT Notes Extension Server'})
 
-
 @app.route('/saveNotes', methods=['POST'])
 def save_notes():
     try:
@@ -124,7 +123,22 @@ def fetch_general_notes():
     except Exception as e:
         print(e)
         return jsonify({'task': 'check_notes_exist', 'status': 'failure', 'exists': False})
+    
+@app.route('/dashboard', methods=['GET', 'POST'])
+def dashboard():
+    if request.method == 'GET':
+        return render_template('dashboard.html')
+    else:
+        videos = notes_dao.get_all_videos()
+        return jsonify({'videos': videos})
+    
+@app.route('/search', methods=['POST'])
+def search():
+    data = request.get_json()
+    search_query = data.get('query')
+    videos = notes_dao.search_videos(search_query)
+    return jsonify({'videos': videos})
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)

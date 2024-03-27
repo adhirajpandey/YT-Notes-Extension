@@ -2,8 +2,6 @@ import sqlite3
 import datetime
 
 DATABASE = "database/notes.db"
-DATABASE = r'D:\\Projects\\Ongoing\\YT-Notes-Extension\\server\\database\\notes.db'
-
 
 
 def get_current_timestamp():
@@ -123,3 +121,22 @@ def get_notes(video_id):
     conn.close()
     return {'general_notes': general_notes, 'timestamp_notes': timestamp_notes}
 
+def get_all_videos():
+    conn = create_connection(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT * FROM videos
+    ''',)
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
+def search_videos(search_query):
+    conn = create_connection(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT * FROM videos WHERE video_title LIKE ?
+    ''', (f'%{search_query}%',))
+    data = cursor.fetchall()
+    conn.close()
+    return data
