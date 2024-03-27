@@ -49,6 +49,7 @@ def save_notes():
 def get_notes():
     try:
         url = request.args.get('video_url')
+        url = services.clean_yt_url(url)
 
         video_id = notes_dao.get_video_id(url)
         notes = notes_dao.get_notes(video_id)
@@ -66,6 +67,7 @@ def get_notes():
 def get_md():
     try:
         url = request.args.get('video_url')
+        url = services.clean_yt_url(url)
 
         video_id = notes_dao.get_video_id(url)
         notes = notes_dao.get_notes(video_id)
