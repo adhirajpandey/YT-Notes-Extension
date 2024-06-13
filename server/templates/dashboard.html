@@ -67,7 +67,7 @@
 		<div class="mx-auto max-w-7xl" id="video-list"></div>
 	</body>
 	<script>
-		const PASSWORD = "a"
+		const PASSWORD = localStorage.getItem("notes-token")
 
 		async function populateDashboard(videos) {
 			const videoList = document.getElementById("video-list")

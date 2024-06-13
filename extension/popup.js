@@ -1,5 +1,5 @@
 const backendEndpoint = "http://127.0.0.1:5000/" //http://192.168.29.181:5010/
-const PASSWORD = "a"
+const PASSWORD = localStorage.getItem("notes-token")
 
 function fetchVideoTitle() {
 	if (
