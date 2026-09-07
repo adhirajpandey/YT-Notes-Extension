@@ -1,6 +1,6 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Send, Sparkles, RotateCcw } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 import { extractVideoId } from '../lib/videoUtils';
 import GuestLimitModal from '../components/GuestLimitModal';
@@ -10,21 +10,13 @@ import ErrorState from '../components/ui/ErrorState';
 import { getToken } from '../lib/authUtils';
 import {
   apiFetch,
-  conversationsApi,
-  normalizeApiError,
   normalizeFetchError,
   readSseEvents,
   videosApi,
 } from '../api';
 import type { NormalizedApiError } from '../api/errors';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  citations?: { start_seconds: number; end_seconds?: number; label: string }[];
-  createdAt: Date;
-}
+import { useWizChat } from '../hooks/useWizChat';
+import WizChat from '../components/wiz/WizChat';
 
 interface VideoData {
   video_id: string;
@@ -46,24 +38,8 @@ interface VideoData {
   suggested_questions?: string[] | null;
 }
 
-interface WizStreamPayload {
-  error?: string;
-  content?: string;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isWizStreamPayload(value: unknown): value is WizStreamPayload {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    (value.error === undefined || typeof value.error === 'string') &&
-    (value.content === undefined || typeof value.content === 'string')
-  );
 }
 
 function isVideoData(value: unknown): value is VideoData {
@@ -94,136 +70,6 @@ function parseJsonPayload(data: string): unknown {
   }
 }
 
-class ChatDisplayError extends Error {
-  requestId?: string;
-
-  constructor(message: string, requestId?: string) {
-    super(message);
-    this.name = 'ChatDisplayError';
-    this.requestId = requestId;
-  }
-}
-
-// ConversationResponse removed
-
-/**
- * Parses bold markdown (**text**) and renders as bold
- */
-function parseBoldText(content: string, keyPrefix: string = ''): React.ReactNode {
-  const boldRegex = /\*\*([\s\S]+?)\*\*/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = boldRegex.exec(content)) !== null) {
-    if (match!.index > lastIndex) {
-      parts.push(content.slice(lastIndex, match!.index));
-    }
-    parts.push(
-      <strong
-        key={`${keyPrefix}-bold-${match!.index}`}
-        className="font-bold text-foreground"
-      >
-        {match![1]}
-      </strong>
-    );
-    lastIndex = match!.index + match![0].length;
-  }
-
-  if (lastIndex < content.length) {
-    parts.push(content.slice(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : content;
-}
-
-/**
- * Parses timestamp citations from message content and makes them clickable
- * Supports formats: [mm:ss], [hh:mm:ss]
- * Also parses bold markdown (**text**)
- */
-function parseTimestampCitations(content: string, onTimestampClick: (seconds: number) => void): React.ReactNode {
-  // Matches [ ... ] blocks containing digits, colons, commas, spaces
-  const citationBlockRegex = /\[([\d:, ]+)\]/g;
-  
-  // Regex to validate individual timestamps inside the block
-  // Matches mm:ss or hh:mm:ss
-  const timestampPattern = /^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/;
-
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  const renderTimestampButton = (label: string, secondsValue: number, key: string) => (
-    <button
-      key={key}
-      onClick={() => onTimestampClick(secondsValue)}
-      className="inline-flex items-center align-middle px-1.5 py-0.5 mx-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-300 hover:bg-violet-500/20 transition-all text-sm font-mono border border-violet-500/20 cursor-pointer"
-    >
-      {label}
-    </button>
-  );
-
-  const toSeconds = (hasHours: boolean, a: string, b: string, c?: string) => {
-    const hours = hasHours ? parseInt(a) : 0;
-    const minutes = hasHours ? parseInt(b) : parseInt(a);
-    const seconds = hasHours ? parseInt(c || '0') : parseInt(b);
-    return hours * 3600 + minutes * 60 + seconds;
-  };
-
-  const formatLabel = (hasHours: boolean, a: string, b: string, c?: string) => {
-    if (hasHours) {
-      return `${parseInt(a)}:${b}:${c || '00'}`;
-    }
-    return `${parseInt(a)}:${b}`;
-  };
-
-  while ((match = citationBlockRegex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      // Parse bold in text between citation blocks
-      parts.push(parseBoldText(content.slice(lastIndex, match.index), `pre-${match.index}`));
-    }
-
-    const innerContent = match[1];
-    const timestampParts = innerContent.split(',');
-    
-    const blockElements: React.ReactNode[] = [];
-    
-    timestampParts.forEach((part, idx) => {
-      const trimmed = part.trim();
-      const tsMatch = timestampPattern.exec(trimmed);
-
-      if (idx > 0) {
-        blockElements.push(<span key={`comma-${match!.index}-${idx}`}>, </span>);
-      }
-
-      if (tsMatch) {
-        const hasHours = tsMatch[3] !== undefined;
-        const secondsValue = toSeconds(hasHours, tsMatch[1], tsMatch[2], tsMatch[3]);
-        const label = formatLabel(hasHours, tsMatch[1], tsMatch[2], tsMatch[3]);
-        blockElements.push(
-          renderTimestampButton(label, secondsValue, `btn-${match!.index}-${idx}`)
-        );
-      } else {
-        // If part doesn't look like a timestamp, just render text
-        blockElements.push(<span key={`text-${match!.index}-${idx}`}>{trimmed}</span>);
-      }
-    });
-
-    // Push the whole constructed block
-    parts.push(<span key={`block-${match!.index}`}>{blockElements}</span>);
-
-    lastIndex = match!.index + match![0].length;
-  }
-
-  if (lastIndex < content.length) {
-    // Parse bold in remaining text
-    parts.push(parseBoldText(content.slice(lastIndex), `post-${lastIndex}`));
-  }
-
-  return parts.length > 0 ? parts : parseBoldText(content, 'no-ts');
-}
-
 function WizWorkspacePage() {
   const params = useParams();
   const location = useLocation();
@@ -234,28 +80,15 @@ function WizWorkspacePage() {
   
   const navigate = useNavigate();
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [videoData, setVideoData] = useState<VideoData | null>(null);
-  const [conversationId, setConversationId] = useState<number | null>(null);
-  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [isPolling, setIsPolling] = useState(true);
   const [showRefreshModal, setShowRefreshModal] = useState(false);
-  const [showGuestLimit, setShowGuestLimit] = useState(false);
-  const [showRegisteredLimit, setShowRegisteredLimit] = useState(false);
-  const [resetSeconds, setResetSeconds] = useState<number | null>(null);
   const [statusError, setStatusError] = useState<NormalizedApiError | null>(null);
-  const [conversationError, setConversationError] = useState<NormalizedApiError | null>(null);
   const [statusAttempt, setStatusAttempt] = useState(0);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<HTMLIFrameElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const pollingStartTime = useRef<number>(Date.now());
   const videoDataRef = useRef<VideoData | null>(null);
-  const initializedConversationVideoIdRef = useRef<string | null>(null);
 
-  // Handle URL normalization and redirects
   // Handle URL normalization and redirects
   useEffect(() => {
     if (!rawInput) {
@@ -279,29 +112,21 @@ function WizWorkspacePage() {
 
   // Reset state when videoId changes
   useEffect(() => {
-    setMessages([]);
     setVideoData(null);
     setIsPolling(true);
-    setConversationId(null);
     setShowRefreshModal(false);
     setStatusError(null);
-    setConversationError(null);
     // Reset refs
     pollingStartTime.current = Date.now();
   }, [videoId]);
 
   // Computed status
   const transcriptStatus = videoData?.transcript_available ? 'ready' : 'loading';
+  const chat = useWizChat(videoId, transcriptStatus === 'ready');
 
   useEffect(() => {
     videoDataRef.current = videoData;
   }, [videoData]);
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [messages]);
 
   // Stream video status via SSE and reconnect within the existing deadline.
   useEffect(() => {
@@ -489,246 +314,8 @@ function WizWorkspacePage() {
     }
   };
 
-  // Ensure guest session ID exists
-  useEffect(() => {
-    const token = getToken();
-    let guestSessionId = sessionStorage.getItem('guestSessionId');
-    if (!token && !guestSessionId) {
-      guestSessionId = crypto.randomUUID();
-      sessionStorage.setItem('guestSessionId', guestSessionId);
-    }
-  }, []);
-
-  const createNewConversation = useCallback(async () => {
-    if (!videoId || isCreatingConversation) return null;
-    setIsCreatingConversation(true);
-    setConversationError(null);
-    try {
-      const data = await conversationsApi.createConversation({ video_id: videoId });
-      setConversationId(data.id);
-      return data.id;
-    } catch (error) {
-      const normalized = normalizeApiError(
-        error,
-        'Unable to start a conversation. Please try again.'
-      );
-      console.error('Failed to create conversation:', error);
-      if (normalized.handled) return null;
-      setConversationError(normalized);
-      return null;
-    } finally {
-      setIsCreatingConversation(false);
-    }
-  }, [isCreatingConversation, videoId]);
-
-  useEffect(() => {
-    if (!videoId) {
-      initializedConversationVideoIdRef.current = null;
-      return;
-    }
-    if (initializedConversationVideoIdRef.current === videoId) {
-      return;
-    }
-    initializedConversationVideoIdRef.current = videoId;
-    void createNewConversation();
-  }, [createNewConversation, videoId]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = inputValue.trim();
-    if (
-      !trimmed ||
-      isLoading ||
-      transcriptStatus !== 'ready' ||
-      conversationError
-    ) return;
-
-    setIsLoading(true);
-    let activeConversationId = conversationId;
-    if (!activeConversationId) {
-      activeConversationId = await createNewConversation();
-    }
-    if (!activeConversationId) {
-      setIsLoading(false);
-      return;
-    }
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: trimmed,
-      createdAt: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
-
-    // Create assistant message placeholder for streaming
-    const assistantMessageId = (Date.now() + 1).toString();
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      createdAt: new Date(),
-    };
-    setMessages((prev) => [...prev, assistantMessage]);
-
-    let fullContent = '';
-    try {
-      const response = await apiFetch(
-        conversationsApi.getSendMessageUrl(activeConversationId),
-        {
-        method: 'POST',
-        body: JSON.stringify({
-          message: trimmed
-        }),
-        }
-      );
-      const requestId = response.headers.get('X-Request-ID') ?? undefined;
-
-      if (response.status === 401) {
-        setMessages((prev) =>
-          prev.filter((message) => message.id !== assistantMessageId)
-        );
-        return;
-      }
-
-      if (response.status === 429) {
-        const normalized = await normalizeFetchError(
-          response,
-          'You have reached the current chat limit.'
-        );
-        setMessages((prev) =>
-          prev.filter((message) => message.id !== assistantMessageId)
-        );
-        if (getToken()) {
-          setResetSeconds(normalized.retryAfterSeconds ?? null);
-          setShowRegisteredLimit(true);
-        } else {
-          setShowGuestLimit(true);
-        }
-        return;
-      }
-
-      if (response.status === 202) {
-        let processingMessage = 'Transcript processing';
-        try {
-          const data: unknown = await response.json();
-          if (isRecord(data) && typeof data.message === 'string') {
-            processingMessage = data.message;
-          }
-        } catch {
-          // Fallback to default message
-        }
-        setShowRefreshModal(true);
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, content: processingMessage }
-              : msg
-          )
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      if (!response.ok) {
-        const normalized = await normalizeFetchError(
-          response,
-          'Chat is temporarily unavailable. Please try again.'
-        );
-        throw new ChatDisplayError(normalized.message, normalized.requestId);
-      }
-
-      if (!response.body) {
-        throw new ChatDisplayError(
-          'The chat response could not be read. Please try again.',
-          requestId
-        );
-      }
-
-      let streamDone = false;
-      for await (const event of readSseEvents(response.body)) {
-        if (event.data === '[DONE]') {
-          streamDone = true;
-          break;
-        }
-        const parsed = parseJsonPayload(event.data);
-        if (!isWizStreamPayload(parsed)) {
-          throw new ChatDisplayError(
-            'The server returned an invalid chat response.',
-            requestId
-          );
-        }
-        if (parsed.error) {
-          throw new ChatDisplayError(parsed.error, requestId);
-        }
-        if (parsed.content) {
-          fullContent += parsed.content;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: fullContent }
-                : msg
-            )
-          );
-          setIsLoading(false);
-        }
-      }
-
-      if (!fullContent) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, content: 'No response received. Please try again.' }
-              : msg
-          )
-        );
-      } else if (!streamDone) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? {
-                  ...msg,
-                  content: `${fullContent}\n\nError: The response was interrupted. Please try again.`,
-                }
-              : msg
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Chat error:', error);
-      const message =
-        error instanceof ChatDisplayError
-          ? error.message
-          : 'The chat connection failed. Please try again.';
-      const referenceId =
-        error instanceof ChatDisplayError ? error.requestId : undefined;
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? {
-                ...msg,
-                content: `${fullContent ? `${fullContent}\n\n` : ''}Error: ${message}${referenceId ? `\n\nReference: ${referenceId}` : ''}`,
-              }
-            : msg
-        )
-      );
-    } finally {
-      setIsLoading(false);
-      inputRef.current?.focus();
-    }
-  };
-
-  const handleNewChat = () => {
-    setMessages([]);
-    setConversationId(null);
-    setConversationError(null);
-    void createNewConversation();
-    inputRef.current?.focus();
-  };
-
   const retryVideoStatus = () => {
+    chat.dismissProcessing();
     setShowRefreshModal(false);
     setStatusError(null);
     pollingStartTime.current = Date.now();
@@ -753,7 +340,7 @@ function WizWorkspacePage() {
       />
       <div className="max-w-screen-2xl mx-auto px-4 md:px-6 py-5">
       {/* Refresh Modal */}
-      {showRefreshModal && (
+      {(showRefreshModal || chat.isProcessing) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-card rounded-2xl p-6 max-w-md w-full mx-4 border border-border shadow-2xl">
             <div className="text-center">
@@ -780,181 +367,38 @@ function WizWorkspacePage() {
 
       {/* Guest Limit Modal */}
       <GuestLimitModal 
-        isOpen={showGuestLimit} 
-        onClose={() => setShowGuestLimit(false)} 
+        isOpen={chat.limit?.kind === 'guest'}
+        onClose={chat.dismissLimit}
       />
 
       {/* Registered User Limit Modal */}
       <RegisteredLimitModal
-        isOpen={showRegisteredLimit}
-        onClose={() => setShowRegisteredLimit(false)}
-        resetInSeconds={resetSeconds}
+        isOpen={chat.limit?.kind === 'user'}
+        onClose={chat.dismissLimit}
+        resetInSeconds={chat.limit?.resetSeconds ?? null}
       />
 
       {/* Main Content - Split View: Chat Left, Video Right */}
       <div className="flex flex-col-reverse lg:flex-row lg:items-stretch gap-6 lg:h-[calc(100vh-6.5rem)]">
         
-        {/* Left Pane - Chat */}
-        <div className="w-full lg:w-[45%] flex flex-col rounded-2xl bg-card border border-border overflow-hidden h-[500px] lg:h-auto lg:min-h-0">
-          
-          {/* Chat Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 flex items-center justify-center border border-violet-500/20">
-                <Sparkles className="w-4 h-4 text-violet-400" />
-              </div>
-              <span className="text-sm font-semibold text-foreground">Wiz Chat</span>
-            </div>
-            {messages.length > 0 && (
-              <button
-                onClick={handleNewChat}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-foreground/60 hover:text-foreground hover:bg-muted transition-all"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>New</span>
-              </button>
-            )}
-          </div>
-
-          {/* Transcript Status Banner */}
-          {statusError ? (
+        <WizChat
+          key={`${videoId}-${chat.generation}`}
+          chat={chat}
+          isReady={transcriptStatus === 'ready'}
+          suggestedQuestions={videoData?.suggested_questions}
+          onSeek={seekToTimestamp}
+          statusBanner={statusError ? (
             <div className="border-b border-border">
-              <ErrorState
-                compact
-                className="py-5"
-                title="Unable to check video status"
-                message={statusError.message}
-                referenceId={statusError.requestId}
-                onRetry={retryVideoStatus}
-              />
+              <ErrorState compact className="py-5" title="Unable to check video status"
+                message={statusError.message} referenceId={statusError.requestId} onRetry={retryVideoStatus} />
             </div>
-          ) : transcriptStatus === 'loading' && (
-            <div className="flex items-center justify-center gap-3 px-4 py-3 bg-gradient-to-r from-violet-500/10 to-fuchsia-500/10 border-b border-border">
-              <div className="w-4 h-4 rounded-full border-2 border-violet-400/30 border-t-violet-400 animate-spin" />
-              <span className="text-sm text-violet-300">Preparing transcript...</span>
+          ) : transcriptStatus === 'loading' ? (
+            <div role="status" className="flex items-center justify-center gap-3 px-4 py-3 bg-violet-500/10 border-b border-border">
+              <div className="size-4 rounded-full border-2 border-violet-500/30 border-t-violet-500 animate-spin" />
+              <span className="text-sm wiz-accent-text">Preparing transcript...</span>
             </div>
-          )}
-          
-
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-4 space-y-4">
-              {conversationError && (
-                <ErrorState
-                  compact
-                  title="Unable to start chat"
-                  message={conversationError.message}
-                  referenceId={conversationError.requestId}
-                  onRetry={() => void createNewConversation()}
-                />
-              )}
-
-              {messages.length === 0 && transcriptStatus === 'ready' && !conversationError && (
-                <div className="flex flex-col items-center justify-center text-center py-12 px-4">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 flex items-center justify-center mb-5 border border-violet-500/20">
-                    <Sparkles className="w-8 h-8 text-violet-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2 text-foreground">Ready to chat!</h3>
-                  <p className="text-foreground/50 text-sm max-w-xs leading-relaxed mb-6">
-                    Ask me anything about this video. I'll provide answers with clickable timestamp citations.
-                  </p>
-                  {videoData?.suggested_questions?.length === 3 && (
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {videoData.suggested_questions.map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          onClick={() => setInputValue(suggestion)}
-                          className="px-3 py-2 text-xs rounded-lg bg-secondary/50 border border-border text-foreground/60 hover:text-foreground hover:bg-secondary hover:border-border/80 transition-all"
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {messages.map((message) => {
-                // Don't render empty assistant messages (placeholders for streaming)
-                if (message.role === 'assistant' && !message.content) return null;
-
-                return (
-                <div
-                  key={message.id}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                      message.role === 'user'
-                        ? 'bg-gradient-to-r from-violet-600 to-violet-500 text-white'
-                        : 'bg-muted/70 border border-border'
-                    }`}
-                  >
-                    <div className="text-sm leading-loose whitespace-pre-wrap">
-                      {message.role === 'assistant'
-                        ? parseTimestampCitations(message.content, seekToTimestamp)
-                        : parseBoldText(message.content, `user-${message.id}`)}
-                    </div>
-                  </div>
-                </div>
-              ); })}
-
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-muted border border-border rounded-2xl px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <div className="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <div className="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                      <span className="text-sm text-foreground/50">Thinking...</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-
-          {/* Input Area */}
-          <div className="p-4 border-t border-border">
-            <form onSubmit={handleSubmit} className="flex gap-3">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder={
-                  transcriptStatus === 'ready'
-                    ? 'Ask about this video...'
-                    : 'Waiting for transcript...'
-                }
-                disabled={
-                  transcriptStatus !== 'ready' ||
-                  isLoading ||
-                  isCreatingConversation ||
-                  Boolean(conversationError)
-                }
-                className="flex-1 px-4 py-3 bg-muted/50 border border-input rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <button
-                type="submit"
-                disabled={
-                  transcriptStatus !== 'ready' ||
-                  isLoading ||
-                  isCreatingConversation ||
-                  Boolean(conversationError) ||
-                  !inputValue.trim()
-                }
-                className="px-4 py-3 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </form>
-          </div>
-        </div>
+          ) : null}
+        />
 
         {/* Right Pane - Video + Details */}
         <div className="w-full lg:w-[55%] flex flex-col rounded-2xl bg-card border border-border overflow-hidden">

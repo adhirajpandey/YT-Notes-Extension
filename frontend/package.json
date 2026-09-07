@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.18",
+    "@assistant-ui/react-markdown": "0.14.14",
     "@radix-ui/react-slot": "^1.2.3",
     "@tailwindcss/vite": "^4.1.13",
     "axios": "^1.13.4",
@@ -22,13 +24,17 @@
     "react-helmet-async": "npm:@vuer-ai/react-helmet-async@2.0.7",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.9.3",
+    "remark-gfm": "4.0.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
     "@tailwindcss/postcss": "^4.1.13",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/chrome": "^0.1.36",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^24.6.1",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
@@ -38,6 +44,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.4.0",
+    "jsdom": "^30.0.1",
     "postcss": "^8.5.6",
     "shadcn": "^3.3.1",
     "shadcn-ui": "^0.9.5",

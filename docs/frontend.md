@@ -34,10 +34,28 @@ Summarize the web app structure, routing, and API integration.
   `/v2/videos/:id/stream`, and streams chat responses from
   `/v2/conversations/:id/messages` through the shared authenticated Fetch and
   SSE utilities.
+- **Wiz chat UI**: The lazily loaded workspace uses assistant-ui ExternalStoreRuntime.
+  `useWizChat` owns domain messages, conversation creation, authenticated SSE,
+  quota/processing responses, and request identity without importing assistant-ui.
+  `WizChat` converts domain messages at the UI boundary; assistant-ui owns the
+  composer, message iteration, scrolling, and copy feedback. Sending is blocked
+  throughout a run while typing remains available. The composer supports Enter
+  to send and Shift+Enter for a newline.
+- **Wiz lifecycle**: Each workspace entry creates a fresh server conversation.
+  New chat clears the draft and thread, aborts the local stream, and creates a
+  new conversation. Generation and request guards discard obsolete updates,
+  including late errors and cleanup. Local abort does not promise cancellation
+  of backend generation. FastAPI remains responsible for message persistence
+  and history; the UI does not restore conversations after reload.
+- **Wiz answers**: Markdown supports custom timestamp buttons that seek the
+  YouTube player. Citation parsing excludes code, links, and images and reparses
+  accumulated streamed text. Partial answers survive stream failures; errors
+  and support references render separately and are excluded from answer copying.
+  Edit, regenerate, branching, Stop, and history controls are not enabled.
 - **Wiz starter questions**: The empty chat renders three video-specific
   questions from `VideoRead.suggested_questions`. Clicking one fills the input;
   videos without generated questions show no generic fallback chips.
-- **Video readiness**: Uses a 60s stream timeout; on stream failure it falls back to polling `/v2/videos/:id` every 5s and shows a refresh prompt if transcript never becomes available.
+- **Video readiness**: Uses a 60s stream deadline and reconnects to the video SSE endpoint every 5s after failures. Shows a retry error for failed status checks or a processing prompt when the transcript is still unavailable. Check again restarts the deadline without leaving the conversation.
 - **API errors**: Axios, Fetch, and SSE failures normalize to a shared frontend
   error type. Safe handled `4xx` messages may be shown to users; `5xx` and
   malformed responses use curated fallback copy and may include the backend

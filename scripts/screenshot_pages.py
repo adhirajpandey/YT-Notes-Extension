@@ -318,8 +318,8 @@ def build_init_script(token: str | None) -> str:
       sessionStorage.removeItem('guestSessionId');
       if (token) localStorage.setItem('token', token);
       else localStorage.removeItem('token');
-      document.documentElement.classList.add('dark');
       const installStyles = () => {{
+        document.documentElement.classList.add('dark');
         const style = document.createElement('style');
         style.dataset.vidwizScreenshots = 'true';
         style.textContent = `
