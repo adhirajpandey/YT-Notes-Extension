@@ -46,8 +46,10 @@ def test_build_system_instruction_formats_transcript():
         {"offset": 61, "text": "World"},
     ]
     instruction = conversations_service.build_system_instruction("Title", transcript)
-    assert "0:01 Hello" in instruction
-    assert "1:01 World" in instruction
+    assert '"start_seconds": 1.0' in instruction
+    assert '"text": "Hello"' in instruction
+    assert '"start_seconds": 61.0' in instruction
+    assert "chunk_" in instruction
 
 
 def test_check_daily_quota_enforces_limit(db_session, monkeypatch):
@@ -208,4 +210,5 @@ def test_stream_wiz_response_yields_error_on_empty_content(db_session, monkeypat
 
     error_events = [e for e in events if "error" in e and "No response" in e]
     assert len(error_events) == 1
-    assert events[-1] == "data: [DONE]\n\n"
+    assert json.loads(events[-1].removeprefix("data: "))["type"] == "error"
+    assert len(events) == 1

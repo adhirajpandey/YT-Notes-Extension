@@ -47,11 +47,16 @@ Summarize the web app structure, routing, and API integration.
   including late errors and cleanup. Local abort does not promise cancellation
   of backend generation. FastAPI remains responsible for message persistence
   and history; the UI does not restore conversations after reload.
-- **Wiz answers**: Markdown supports custom timestamp buttons that seek the
-  YouTube player. Citation parsing excludes code, links, and images and reparses
-  accumulated streamed text. Partial answers survive stream failures; errors
-  and support references render separately and are excluded from answer copying.
-  Edit, regenerate, branching, Stop, and history controls are not enabled.
+- **Wiz answers**: `useWizChat` stores ordered text and citation parts and validates
+  typed SSE events. Complete text parts render through assistant-ui Markdown
+  with GFM and raw HTML disabled. Citation data parts render as VidWiz timestamp
+  buttons between Markdown blocks and seek using backend-provided seconds.
+  Timestamp-looking Markdown is ordinary text and is never parsed for seeking.
+  Copy joins only text parts with blank lines. Partial answers survive stream
+  failures; errors and support references render separately and are excluded
+  from copying. A typed `done` event confirms persistence; EOF without a terminal
+  event is an interruption. Edit, regenerate, branching, Stop, and history
+  controls are not enabled.
 - **Wiz starter questions**: The empty chat renders three video-specific
   questions from `VideoRead.suggested_questions`. Clicking one fills the input;
   videos without generated questions show no generic fallback chips.

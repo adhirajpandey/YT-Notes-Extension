@@ -8,13 +8,15 @@ import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react';
 import { ArrowDown, ArrowUp, Check, Copy, RotateCcw, Sparkles } from 'lucide-react';
 import type { WizChatController, WizMessage } from '../../hooks/useWizChat';
 import ErrorState from '../ui/ErrorState';
-import WizMarkdown, { WizSeekProvider } from './WizMarkdown';
+import WizMarkdown from './WizMarkdown';
+import WizCitation, { WizSeekProvider } from './WizCitation';
 import './wiz-chat.css';
 
 function convertMessage(message: WizMessage): ThreadMessageLike {
   return {
     id: message.id, role: message.role, createdAt: message.createdAt,
-    content: [{ type: 'text', text: message.content }],
+    content: message.parts.map(part => part.type === 'text' ? part
+      : { type: 'data' as const, name: 'citation', data: part }),
     ...(message.role === 'assistant' ? {
       status: message.status === 'running' ? { type: 'running' as const }
         : message.status === 'error' ? { type: 'incomplete' as const, reason: 'error' as const }
@@ -42,7 +44,7 @@ function AssistantMessage() {
       <Sparkles className="size-3.5 text-violet-500" />Wiz
       {running && <span role="status" className="font-normal motion-safe:animate-pulse">{hasText ? 'Answering…' : 'Thinking…'}</span>}
     </div>
-    <MessagePrimitive.Parts components={{ Text: WizMarkdown }} />
+    <MessagePrimitive.Parts components={{ Text: WizMarkdown, data: { by_name: { citation: WizCitation } } }} />
     {error && <div role="alert" className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-foreground">
       <p>{error.message}</p>
       {error.requestId && <p className="mt-1 text-xs text-muted-foreground">Reference: {error.requestId}</p>}

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, conversationsApi, normalizeApiError, normalizeFetchError, readSseEvents } from '../api';
 import type { NormalizedApiError } from '../api/errors';
+import { parseWizEvent, type MessagePart, type WizStreamEvent } from '../api/messageParts';
 import { getToken } from '../lib/authUtils';
 
 export interface WizMessage {
   id: string;
   role: 'user' | 'assistant';
-  content: string;
+  parts: MessagePart[];
+  serverMessageId?: number;
   createdAt: Date;
   status?: 'running' | 'complete' | 'error';
   error?: { message: string; requestId?: string };
@@ -116,8 +118,8 @@ export function useWizChat(videoId: string | null, isReady: boolean) {
     setIsRunning(true);
     const assistantId = crypto.randomUUID();
     setMessages(previous => [...previous,
-      { id: crypto.randomUUID(), role: 'user', content: message, createdAt: new Date() },
-      { id: assistantId, role: 'assistant', content: '', createdAt: new Date(), status: 'running' },
+      { id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: message }], createdAt: new Date() },
+      { id: assistantId, role: 'assistant', parts: [], createdAt: new Date(), status: 'running' },
     ]);
     const update = (patch: Partial<WizMessage>) => {
       if (isCurrent()) setMessages(previous => previous.map(item =>
@@ -126,7 +128,7 @@ export function useWizChat(videoId: string | null, isReady: boolean) {
     const removePlaceholder = () => {
       if (isCurrent()) setMessages(previous => previous.filter(item => item.id !== assistantId));
     };
-    let content = '';
+    const parts: MessagePart[] = [];
     let requestId: string | undefined;
     let displayError: WizMessage['error'];
     try {
@@ -153,7 +155,7 @@ export function useWizChat(videoId: string | null, isReady: boolean) {
           if (isRecord(data) && typeof data.message === 'string') processingMessage = data.message;
         } catch { /* Keep the existing processing fallback. */ }
         if (!isCurrent()) return;
-        update({ content: processingMessage, status: 'complete' });
+        update({ parts: [{ type: 'text', text: processingMessage }], status: 'complete' });
         setIsProcessing(true);
         return;
       }
@@ -169,26 +171,27 @@ export function useWizChat(videoId: string | null, isReady: boolean) {
       let done = false;
       for await (const event of readSseEvents(response.body)) {
         if (!isCurrent()) return;
-        if (event.data === '[DONE]') { done = true; break; }
-        let data: unknown;
-        try { data = JSON.parse(event.data); } catch { data = null; }
-        if (!isRecord(data) || (data.content !== undefined && typeof data.content !== 'string') ||
-            (data.error !== undefined && typeof data.error !== 'string')) {
+        let data: WizStreamEvent;
+        try { data = parseWizEvent(JSON.parse(event.data)); } catch {
           displayError = { message: 'The server returned an invalid chat response.', requestId };
           throw new Error('Invalid stream event');
         }
-        if (typeof data.error === 'string' && data.error) {
-          displayError = { message: data.error, requestId };
+        if (data.type === 'done') {
+          done = true;
+          update({ serverMessageId: data.message_id });
+          break;
+        }
+        if (data.type === 'error') {
+          displayError = { message: data.message, requestId };
           throw new Error('Stream error');
         }
-        if (typeof data.content === 'string') {
-          content += data.content;
-          update({ content });
-        }
+        parts.push(data);
+        update({ parts: [...parts] });
       }
-      if (!content || !done) {
+      const hasText = parts.some(part => part.type === 'text' && part.text.trim());
+      if (!hasText || !done) {
         update({ status: 'error', error: {
-          message: content ? 'The response was interrupted. Please try again.' : 'No response received. Please try again.',
+          message: parts.length ? 'The response was interrupted. Please try again.' : 'No response received. Please try again.',
           requestId,
         } });
       } else update({ status: 'complete' });

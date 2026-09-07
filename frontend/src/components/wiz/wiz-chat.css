@@ -1,5 +1,6 @@
 .wiz-markdown > :first-child { margin-top: 0; }
 .wiz-markdown > :last-child { margin-bottom: 0; }
+.wiz-markdown + .wiz-markdown { margin-top: 0.65rem; }
 .wiz-markdown p { margin-block: 0.65rem; }
 .wiz-markdown :is(ul, ol) { padding-left: 1.4rem; margin-block: 0.65rem; }
 .wiz-markdown ul { list-style-type: disc; }

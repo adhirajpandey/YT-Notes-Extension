@@ -1,3 +1,4 @@
+import type { MessagePart } from './messageParts';
 export interface MessageResponse {
   message: string;
 }
@@ -143,6 +144,7 @@ export interface ConversationCreate {
 }
 
 export interface MessageRead {
+  parts: MessagePart[];
   id: number;
   conversation_id: number;
   role: 'user' | 'assistant';

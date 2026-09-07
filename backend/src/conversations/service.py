@@ -10,6 +10,17 @@ from sqlalchemy.orm import Session
 from src.auth.schemas import ViewerContext
 from src.conversations.config import conversations_settings
 from src.conversations.models import Conversation, Message
+from src.conversations.parts import (
+    ChunkReference,
+    DoneEvent,
+    ErrorEvent,
+    ModelResponse,
+    PartsDecoder,
+    TextPart,
+    stored_parts,
+    text_projection,
+    transcript_context,
+)
 from src.exceptions import InternalServerError, RateLimitError, NotFoundError
 from src.internal.scheduling import schedule_video_tasks
 from src.videos.models import Video
@@ -248,15 +259,10 @@ def build_transcript_text(transcript: list, *, include_timestamps: bool = True) 
 
 
 def build_system_instruction(video_title: str | None, transcript: list) -> str:
-    transcript_text = build_transcript_text(transcript, include_timestamps=True)
-
-    title = video_title or "this video"
-    safe_title = title.replace("{", "{{").replace("}", "}}")
-    safe_transcript = transcript_text.replace("{", "{{").replace("}", "}}")
-
+    context, _ = transcript_context(transcript)
     return conversations_settings.wiz_system_prompt_template.format(
-        title=safe_title,
-        transcript=safe_transcript,
+        title=video_title or "this video",
+        transcript=json.dumps(context, ensure_ascii=False),
     )
 
 
@@ -269,56 +275,112 @@ def stream_wiz_response(
     db: Session,
     api_key: str,
 ):
-    logger.debug("Streaming Wiz response", extra={"conversation_id": conversation_id})
-    system_instruction = build_system_instruction(video_title, transcript)
+    def event(part):
+        return f"data: {part.model_dump_json()}\n\n"
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=conversations_settings.openrouter_base_url,
-    )
-
-    messages: list[dict] = [{"role": "system", "content": system_instruction}]
-    for msg in history:
-        role = "assistant" if msg["role"] == DB_ROLE_ASSISTANT else "user"
-        messages.append({"role": role, "content": msg["content"]})
-
+    response_stream = None
     try:
-        full_response_text = ""
+        _, references = transcript_context(transcript)
+        messages = [
+            {
+                "role": "system",
+                "content": build_system_instruction(video_title, transcript),
+            }
+        ]
+        for msg in history:
+            content = msg["content"]
+            if msg["role"] == DB_ROLE_ASSISTANT:
+                parts = stored_parts(content, msg.get("metadata"))
+                model_parts = [
+                    part.model_dump()
+                    if isinstance(part, TextPart)
+                    else {"type": "citation", "chunk_id": part.chunk_id}
+                    for part in parts
+                    if isinstance(part, TextPart) or part.chunk_id in references
+                ]
+                content = json.dumps({"parts": model_parts})
+            messages.append({"role": msg["role"], "content": content})
 
+        client = OpenAI(
+            api_key=api_key, base_url=conversations_settings.openrouter_base_url
+        )
         response_stream = client.chat.completions.create(
             model=conversations_settings.openrouter_model_name,
             messages=messages,
             max_tokens=conversations_settings.wiz_max_tokens,
             stream=True,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "wiz_response",
+                    "strict": True,
+                    "schema": ModelResponse.model_json_schema(),
+                },
+            },
+            extra_body={"provider": {"require_parameters": True}},
         )
-
+        decoder = PartsDecoder()
+        resolved = []
+        finish_reason = None
         for chunk in response_stream:
             if not chunk.choices:
                 continue
-            delta = chunk.choices[0].delta
+            choice = chunk.choices[0]
+            if getattr(choice, "finish_reason", None):
+                finish_reason = choice.finish_reason
+            delta = choice.delta
+            if getattr(delta, "refusal", None):
+                raise ValueError("Model refused structured response")
             if delta and delta.content:
-                full_response_text += delta.content
-                yield f"data: {json.dumps({'content': delta.content})}\n\n"
-
-        if full_response_text:
-            save_chat_message(
-                db, conversation_id, DB_ROLE_ASSISTANT, full_response_text
+                for part in decoder.feed(delta.content):
+                    if isinstance(part, ChunkReference):
+                        reference = references.get(part.chunk_id)
+                        if reference is None:
+                            logger.warning(
+                                "Omitting invalid Wiz reference",
+                                extra={
+                                    "chunk_id": part.chunk_id,
+                                    "conversation_id": conversation_id,
+                                },
+                            )
+                            continue
+                        part = reference
+                    resolved.append(part)
+                    yield event(part)
+        if not decoder.buffer:
+            yield event(
+                ErrorEvent(message="No response from AI model. Please try again.")
             )
-        else:
-            logger.warning(
-                "OpenRouter returned empty response",
-                extra={"conversation_id": conversation_id},
+            return
+        decoder.finish()
+        if finish_reason != "stop":
+            raise ValueError("Incomplete model response")
+        content = text_projection(resolved)
+        if not content.strip():
+            yield event(
+                ErrorEvent(message="No response from AI model. Please try again.")
             )
-            yield f"data: {json.dumps({'error': 'No response from AI model. Please try again.'})}\n\n"
-
-        yield "data: [DONE]\n\n"
-        logger.debug(
-            "Wiz response complete", extra={"conversation_id": conversation_id}
+            return
+        message = save_chat_message(
+            db,
+            conversation_id,
+            DB_ROLE_ASSISTANT,
+            content,
+            metadata={
+                "parts_version": 1,
+                "parts": [part.model_dump() for part in resolved],
+            },
         )
-
-    except Exception as exc:
-        logger.error("OpenRouter streaming error", extra={"error": str(exc)})
-        yield f"data: {json.dumps({'error': 'Processing error'})}\n\n"
+        yield event(DoneEvent(message_id=message.id))
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Wiz structured response failed", extra={"conversation_id": conversation_id}
+        )
+        yield event(ErrorEvent(message="Processing error"))
+    finally:
+        if response_stream is not None and hasattr(response_stream, "close"):
+            response_stream.close()
 
 
 def ensure_openrouter_api_key() -> str:
@@ -360,7 +422,8 @@ def prepare_chat(
 
     history_msgs = fetch_recent_history(db, conversation.id, limit=10)
     history_serializable = [
-        {"role": msg.role, "content": msg.content} for msg in history_msgs
+        {"role": msg.role, "content": msg.content, "metadata": msg.metadata_}
+        for msg in history_msgs
     ]
 
     return video, transcript, history_serializable, api_key

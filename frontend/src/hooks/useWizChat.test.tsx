@@ -53,22 +53,44 @@ describe('useWizChat', () => {
     act(() => { sending = hook.result.current.send('  Hello  '); void hook.result.current.send('duplicate'); });
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
     expect(JSON.parse(vi.mocked(apiFetch).mock.calls[0][1]!.body as string)).toEqual({ message: 'Hello' });
-    await act(async () => response.write('{"content":"First"}'));
-    expect(hook.result.current.messages[1].content).toBe('First');
+    await act(async () => response.write('{"type":"text","text":"First"}'));
+    expect(hook.result.current.messages[1].parts).toEqual([{ type: 'text', text: 'First' }]);
     expect(hook.result.current.isRunning).toBe(true);
     await act(async () => hook.result.current.send('overlap'));
     expect(apiFetch).toHaveBeenCalledTimes(1);
-    await act(async () => { response.write('{"content":" answer"}'); response.write('[DONE]'); await sending; });
-    expect(hook.result.current.messages[1]).toMatchObject({ content: 'First answer', status: 'complete' });
+    await act(async () => { response.write('{"type":"text","text":" answer"}'); response.write('{"type":"done","message_id":10}'); await sending; });
+    expect(hook.result.current.messages[1]).toMatchObject({ parts: [{ type: 'text', text: 'First' }, { type: 'text', text: ' answer' }], status: 'complete', serverMessageId: 10 });
     expect(hook.result.current.isRunning).toBe(false);
+  });
+
+  it('appends resolved citations between complete text parts', async () => {
+    const hook = await ready();
+    const response = stream();
+    vi.mocked(apiFetch).mockResolvedValue(response.response);
+    const parts = [
+      { type: 'text', text: '**First**' },
+      { type: 'citation', chunk_id: 'chunk_a', start_seconds: 0.5, end_seconds: 2 },
+      { type: 'text', text: 'Second' },
+    ];
+    await act(async () => {
+      const sending = hook.result.current.send('Question');
+      parts.forEach(part => response.write(JSON.stringify(part)));
+      response.write('{"type":"done","message_id":123}');
+      await sending;
+    });
+    expect(hook.result.current.messages[1]).toMatchObject({ parts, status: 'complete', serverMessageId: 123 });
   });
 
   it.each([
     ['malformed', ['{bad'], 'invalid chat response'],
-    ['invalid payload', ['{"content":42}'], 'invalid chat response'],
-    ['empty', ['[DONE]'], 'No response received'],
-    ['interrupted', ['{"content":"Partial"}'], 'response was interrupted'],
-    ['server stream error', ['{"content":"Partial"}', '{"error":"Processing error"}'], 'Processing error'],
+    ['unknown type', ['{"type":"tool"}'], 'invalid chat response'],
+    ['invalid citation', ['{"type":"citation","chunk_id":"c","start_seconds":3,"end_seconds":1}'], 'invalid chat response'],
+    ['missing citation time', ['{"type":"citation","chunk_id":"c"}'], 'invalid chat response'],
+    ['invalid completion', ['{"type":"done","message_id":0}'], 'invalid chat response'],
+    ['invalid payload', ['{"type":"text","text":42}'], 'invalid chat response'],
+    ['empty', ['{"type":"done","message_id":10}'], 'No response received'],
+    ['interrupted', ['{"type":"text","text":"Partial"}'], 'response was interrupted'],
+    ['server stream error', ['{"type":"text","text":"Partial"}', '{"type":"error","message":"Processing error"}'], 'Processing error'],
   ])('reports %s with a support reference and preserves partial content', async (_name, events, message) => {
     const hook = await ready();
     const response = stream();
@@ -79,7 +101,7 @@ describe('useWizChat', () => {
     });
     expect(hook.result.current.messages[1].error?.message).toContain(message);
     expect(hook.result.current.messages[1].error?.requestId).toBe('request-test');
-    if (events[0].includes('Partial')) expect(hook.result.current.messages[1].content).toBe('Partial');
+    if (events[0].includes('Partial')) expect(hook.result.current.messages[1].parts).toEqual([{ type: 'text', text: 'Partial' }]);
     expect(hook.result.current.isRunning).toBe(false);
   });
 
@@ -98,7 +120,7 @@ describe('useWizChat', () => {
     vi.mocked(apiFetch).mockResolvedValue(new Response(JSON.stringify({ message: 'Preparing transcript' }), { status: 202 }));
     await act(async () => hook.result.current.send('Hello'));
     expect(hook.result.current.isProcessing).toBe(true);
-    expect(hook.result.current.messages[1].content).toBe('Preparing transcript');
+    expect(hook.result.current.messages[1].parts).toEqual([{ type: 'text', text: 'Preparing transcript' }]);
     act(() => hook.result.current.dismissProcessing());
     vi.mocked(apiFetch).mockResolvedValue(new Response(null, { status: 401 }));
     await act(async () => hook.result.current.send('Again'));
@@ -135,8 +157,8 @@ describe('useWizChat', () => {
     expect(hook.result.current.isRunning).toBe(true);
     expect(hook.result.current.messages).toHaveLength(2);
     expect(hook.result.current.messages[1].error).toBeUndefined();
-    await act(async () => { current.write('{"content":"New answer"}'); current.write('[DONE]'); await second; });
-    expect(hook.result.current.messages[1].content).toBe('New answer');
+    await act(async () => { current.write('{"type":"text","text":"New answer"}'); current.write('{"type":"done","message_id":10}'); await second; });
+    expect(hook.result.current.messages[1].parts).toEqual([{ type: 'text', text: 'New answer' }]);
   });
 
   it.each([202, 429, 500])('ignores a stale parsed %s response', async status => {
@@ -162,11 +184,11 @@ describe('useWizChat', () => {
     vi.mocked(apiFetch).mockResolvedValue(response.response);
     let pending!: Promise<void>;
     act(() => { pending = hook.result.current.send('Old'); });
-    await act(async () => response.write('{"content":"Old"}'));
+    await act(async () => response.write('{"type":"text","text":"Old"}'));
     const signal = vi.mocked(apiFetch).mock.calls[0][1]!.signal!;
     hook.rerender({ video: 'video-b', isReady: true });
     await waitFor(() => expect(hook.result.current.conversationId).toBe(2));
-    await act(async () => { response.write('{"content":" stale"}'); await pending; });
+    await act(async () => { response.write('{"type":"text","text":" stale"}'); await pending; });
     expect(signal.aborted).toBe(true);
     expect(hook.result.current.messages).toEqual([]);
     const next = stream();

@@ -21,7 +21,7 @@ function controller(overrides: Partial<WizChatController> = {}): WizChatControll
   };
 }
 function answer(content: string): WizMessage {
-  return { id: 'answer', role: 'assistant', content, createdAt: new Date(0), status: 'complete' };
+  return { id: 'answer', role: 'assistant', parts: [{ type: 'text', text: content }], createdAt: new Date(0), status: 'complete' };
 }
 function view(chat: WizChatController, onSeek = vi.fn(), questions?: string[]) {
   return <WizChat key={chat.generation} chat={chat} isReady suggestedQuestions={questions} onSeek={onSeek} statusBanner={null} />;
@@ -70,13 +70,28 @@ describe('WizChat', () => {
     for (const name of ['Stop', 'Regenerate', 'Edit', 'History']) expect(screen.queryByRole('button', { name })).toBeNull();
   }, 15000);
 
-  it('renders Markdown and timestamp groups as accessible seek buttons', async () => {
+  it('renders Markdown blocks and structured citations in order with accessible seeking', async () => {
     const seek = vi.fn();
-    render(view(controller({ messages: [answer('**Summary**\n\n- See [01:23, 1:02:03].')] }), seek));
-    expect(screen.getByText('Summary').tagName).toBe('STRONG');
+    const message = answer('# Summary\n\n**Bold** and *italic*\n\n- First\n- Second\n\n> Quote');
+    message.parts.push(
+      { type: 'citation', chunk_id: 'chunk_a', start_seconds: 83.25, end_seconds: 90 },
+      { type: 'text', text: '```js\nconst x = 1;\n```\n\n1. One\n2. Two' },
+      { type: 'citation', chunk_id: 'chunk_b', start_seconds: 3723, end_seconds: 3730 },
+    );
+    const rendered = render(view(controller({ messages: [message] }), seek));
+    expect(screen.getByRole('heading', { name: 'Summary' })).toBeTruthy();
+    expect(screen.getByText('Bold').tagName).toBe('STRONG');
+    expect(screen.getByText('italic').tagName).toBe('EM');
+    expect(rendered.container.querySelector('blockquote')?.textContent).toContain('Quote');
+    expect(rendered.container.querySelector('pre')?.textContent).toContain('const x = 1;');
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
     await userEvent.click(screen.getByRole('button', { name: 'Seek video to 1:23' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Seek video to 1:02:03' }));
-    expect(seek.mock.calls).toEqual([[83], [3723]]);
+    const later = screen.getByRole('button', { name: 'Seek video to 1:02:03' });
+    later.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(seek.mock.calls).toEqual([[83.25], [3723]]);
+    const first = screen.getByRole('button', { name: 'Seek video to 1:23' });
+    expect(first.compareDocumentPosition(rendered.container.querySelector('pre')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   }, 15000);
 
   it('leaves code, links, reference links, and images outside citation transformation', () => {
@@ -89,30 +104,21 @@ describe('WizChat', () => {
     expect(rendered.container.querySelector('a button')).toBeNull();
   }, 15000);
 
-  it('reparses streamed partial citations and lets a completed Markdown link supersede a citation', async () => {
-    const chat = controller({ messages: [answer('See [1:')], isRunning: true, isSendDisabled: true });
-    const rendered = render(view(chat));
+  it('never infers citations from generated timestamp text', () => {
+    render(view(controller({ messages: [answer('See [1:23] and [[timestamp:83]] and {{chunk:42}}.')] })));
     expect(screen.queryByRole('button', { name: /Seek video/ })).toBeNull();
-    rendered.rerender(view({ ...chat, messages: [answer('See [1:23, 2:')] }));
-    expect(screen.queryByRole('button', { name: /Seek video/ })).toBeNull();
-    rendered.rerender(view({ ...chat, messages: [answer('See [1:23, 2:34]')] }));
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Seek video/ })).toHaveLength(2));
-    rendered.rerender(view({ ...chat, messages: [answer('See [1:23]')] }));
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Seek video/ })).toHaveLength(1));
-    rendered.rerender(view({ ...chat, messages: [answer('See [1:23](')] }));
-    await waitFor(() => expect(screen.queryByRole('button', { name: /Seek video/ })).toBeNull());
-    rendered.rerender(view({ ...chat, messages: [answer('See [1:23](https://example.com)')] }));
-    await waitFor(() => expect(screen.getByRole('link', { name: '1:23' })).toBeTruthy());
-    expect(rendered.container.querySelector('a button')).toBeNull();
-  }, 15000);
+  });
 
   it('uses assistant-ui copy feedback and keeps errors out of copied answer text', async () => {
     const user = userEvent.setup();
     const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
-    render(view(controller({ messages: [{ ...answer('Partial answer'), status: 'error', error: { message: 'Interrupted', requestId: 'ref-1' } }] })));
+    const partial = answer('Partial answer');
+    partial.parts.push({ type: 'citation', chunk_id: 'chunk_x', start_seconds: 0, end_seconds: 2 },
+      { type: 'text', text: '**More**' });
+    render(view(controller({ messages: [{ ...partial, status: 'error', error: { message: 'Interrupted', requestId: 'ref-1' } }] })));
     expect(screen.getByRole('alert').textContent).toContain('ref-1');
     await user.click(screen.getByRole('button', { name: 'Copy answer' }));
-    await waitFor(() => expect(copy).toHaveBeenCalledWith('Partial answer'));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('Partial answer\n\n**More**'));
     expect(screen.getByRole('button', { name: 'Copied answer' })).toBeTruthy();
     await act(async () => {});
   }, 15000);

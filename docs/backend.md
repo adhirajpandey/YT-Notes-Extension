@@ -49,7 +49,42 @@ Describe the FastAPI backend: structure, auth rules, and the request/worker life
 
 ## Streaming (SSE)
 - **Video readiness**: `/v2/videos/{id}/stream` emits `snapshot`, `update`, and `done` when metadata, transcript, and summary are all ready (timeout 60s).
-- **Wiz responses**: `/v2/conversations/{id}/messages` streams chunked `data: {"content": ...}` and ends with `data: [DONE]`.
+- **Wiz responses**: `/v2/conversations/{id}/messages` emits JSON SSE data with a
+  `type` discriminator: `text`, `citation`, `done`, or `error`. Each text event
+  contains a complete Markdown part. Citations contain `chunk_id`,
+  `start_seconds`, and `end_seconds` resolved by FastAPI. `done` includes the
+  persisted `message_id`; failures end with `error` and a safe `message`.
+  There is no `[DONE]` sentinel. EOF without a terminal event is interruption.
+
+### Wiz structured responses
+
+OpenRouter receives a strict JSON schema for an ordered `parts` array. Text
+parts contain complete Markdown blocks; citation parts from the model contain
+only a chunk ID. Requests require a provider supporting structured outputs.
+FastAPI incrementally frames complete JSON objects, validates them, resolves
+references, and streams each part. It validates the full envelope and checks
+successful model completion before saving. Invalid references are omitted and
+logged; malformed or truncated output ends with an error. Already emitted parts
+remain visible in the client but failed partial assistant responses are not saved.
+
+Wiz normalizes existing transcript segments at read time. IDs combine a SHA-256
+transcript revision prefix with the original segment index. They remain stable
+for the same transcript snapshot. Start times use `offset`; end times use
+`offset + duration`. Missing duration uses the next later valid offset, or the
+start time if none exists. Invalid timing leaves text in context without a
+citable ID. Fractional seconds are preserved. S3 objects and workers are unchanged.
+
+Completed assistant parts are stored in message metadata as `parts_version=1`
+and `parts`. The existing `content` column contains text parts joined by blank
+lines. Message reads expose typed `parts`; older messages become one text part
+without inferred citations. Follow-up model context retains structured parts,
+but discards IDs absent from the current transcript. Stored citation timestamps
+remain unchanged when a transcript is replaced.
+
+Backend and frontend releases must be coordinated because this replaces the
+previous string-only SSE contract. No database migration or transcript backfill
+is needed. Smoke-test the configured OpenRouter model with this schema before
+release; unsupported endpoints fail rather than falling back to plain text.
 
 ## Wiz Starter Questions
 - `VideoRead.suggested_questions` exposes only the validated question list; the

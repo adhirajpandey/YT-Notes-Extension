@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from src.conversations.parts import MessagePart, stored_parts
 from src.models import ApiModel
 from src.videos.utils import normalize_youtube_video_id
 
@@ -49,6 +50,12 @@ class MessageRead(ApiModel):
     content: str
     metadata: dict | None = Field(default=None, validation_alias="metadata_")
     created_at: datetime
+    parts: list[MessagePart] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def resolve_parts(self):
+        self.parts = stored_parts(self.content, self.metadata)
+        return self
 
 
 class ChatProcessingResponse(ApiModel):
